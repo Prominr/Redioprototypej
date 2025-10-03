@@ -1,0 +1,421 @@
+// Settings
+    let settings = JSON.parse(localStorage.getItem('settings') || '{"cloakTitle":"Google","cloakIcon":"https://www.google.com/favicon.ico","bgImage":""}');
+
+    // Apply saved settings
+    if (settings.bgImage) {
+      document.body.style.backgroundImage = `url('${settings.bgImage}')`;
+      document.body.style.backgroundSize = 'cover';
+      document.body.style.backgroundPosition = 'center';
+      document.body.style.backgroundAttachment = 'fixed';
+    }
+    document.getElementById('pageTitle').textContent = settings.cloakTitle;
+    document.getElementById('favicon').href = settings.cloakIcon;
+
+    // Auto-cloak
+    window.onload = function() {
+      if (window.location !== window.parent.location) return;
+      
+      const win = window.open('about:blank', '_blank');
+      if (win) {
+        win.document.write(`
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>${settings.cloakTitle}</title>
+            <link rel="icon" href="${settings.cloakIcon}">
+            <style>
+              body { margin: 0; padding: 0; overflow: hidden; }
+              iframe { width: 100%; height: 100vh; border: none; }
+            </style>
+          </head>
+          <body>
+            <iframe src="${window.location.href}"></iframe>
+          </body>
+          </html>
+        `);
+        win.document.close();
+        window.close();
+      }
+    };
+
+    // Tab management
+    let tabs = JSON.parse(localStorage.getItem('tabs') || '[]');
+    let currentTabIndex = -1;
+
+    // Games
+    let games = JSON.parse(localStorage.getItem('games') || '[]');
+    
+    function renderGames() {
+      const grid = document.getElementById('gamesGrid');
+      if (games.length === 0) {
+        grid.innerHTML = '<p style="color:#888;">No games added yet</p>';
+        return;
+      }
+      grid.innerHTML = games.map((game, i) => `
+        <div class="item">
+          <h3>${escapeHtml(game.name)}</h3>
+          <button onclick="openInBrowser('${escapeHtml(game.url).replace(/'/g, "\\'")}', '${escapeHtml(game.name).replace(/'/g, "\\'")}', 'game')">Play</button>
+          <button onclick="deleteGame(${i})" class="delete-btn">Delete</button>
+        </div>
+      `).join('');
+    }
+
+    function addGame() {
+      const name = document.getElementById('newGameName').value.trim();
+      let url = document.getElementById('newGameUrl').value.trim();
+      
+      if (name && url) {
+        // Add https if not present
+        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+          url = 'https://' + url;
+        }
+        games.push({ name, url });
+        localStorage.setItem('games', JSON.stringify(games));
+        document.getElementById('newGameName').value = '';
+        document.getElementById('newGameUrl').value = '';
+        renderGames();
+      }
+    }
+
+    function deleteGame(i) {
+      if (confirm('Delete this game?')) {
+        games.splice(i, 1);
+        localStorage.setItem('games', JSON.stringify(games));
+        renderGames();
+      }
+    }
+
+    // Apps
+    let apps = JSON.parse(localStorage.getItem('apps') || '[]');
+    
+    function renderApps() {
+      const grid = document.getElementById('appsGrid');
+      if (apps.length === 0) {
+        grid.innerHTML = '<p style="color:#888;">No apps added yet</p>';
+        return;
+      }
+      grid.innerHTML = apps.map((app, i) => `
+        <div class="item">
+          <h3>${escapeHtml(app.name)}</h3>
+          <button onclick="openInBrowser('${escapeHtml(app.url).replace(/'/g, "\\'")}', '${escapeHtml(app.name).replace(/'/g, "\\'")}', 'app')">Open</button>
+          <button onclick="deleteApp(${i})" class="delete-btn">Delete</button>
+        </div>
+      `).join('');
+    }
+
+    function addApp() {
+      const name = document.getElementById('newAppName').value.trim();
+      let url = document.getElementById('newAppUrl').value.trim();
+      
+      if (name && url) {
+        // Add https if not present
+        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+          url = 'https://' + url;
+        }
+        apps.push({ name, url });
+        localStorage.setItem('apps', JSON.stringify(apps));
+        document.getElementById('newAppName').value = '';
+        document.getElementById('newAppUrl').value = '';
+        renderApps();
+      }
+    }
+
+    function deleteApp(i) {
+      if (confirm('Delete this app?')) {
+        apps.splice(i, 1);
+        localStorage.setItem('apps', JSON.stringify(apps));
+        renderApps();
+      }
+    }
+
+    // Navigation
+    function showHome() {
+      document.getElementById('mainContent').style.display = 'block';
+      document.getElementById('gamesSection').style.display = 'none';
+      document.getElementById('appsSection').style.display = 'none';
+      document.getElementById('tabsSection').style.display = 'none';
+      document.getElementById('settingsSection').style.display = 'none';
+      document.getElementById('browserContainer').style.display = 'none';
+    }
+
+    function showGames(e) {
+      if (e) e.preventDefault();
+      document.getElementById('mainContent').style.display = 'none';
+      document.getElementById('gamesSection').style.display = 'block';
+      document.getElementById('appsSection').style.display = 'none';
+      document.getElementById('tabsSection').style.display = 'none';
+      document.getElementById('settingsSection').style.display = 'none';
+      document.getElementById('browserContainer').style.display = 'none';
+      renderGames();
+    }
+
+    function showApps(e) {
+      if (e) e.preventDefault();
+      document.getElementById('mainContent').style.display = 'none';
+      document.getElementById('gamesSection').style.display = 'none';
+      document.getElementById('appsSection').style.display = 'block';
+      document.getElementById('tabsSection').style.display = 'none';
+      document.getElementById('settingsSection').style.display = 'none';
+      document.getElementById('browserContainer').style.display = 'none';
+      renderApps();
+    }
+
+    function showTabs(e) {
+      if (e) e.preventDefault();
+      document.getElementById('mainContent').style.display = 'none';
+      document.getElementById('gamesSection').style.display = 'none';
+      document.getElementById('appsSection').style.display = 'none';
+      document.getElementById('tabsSection').style.display = 'block';
+      document.getElementById('settingsSection').style.display = 'none';
+      document.getElementById('browserContainer').style.display = 'none';
+      renderTabs();
+    }
+
+    function showSettings(e) {
+      if (e) e.preventDefault();
+      document.getElementById('mainContent').style.display = 'none';
+      document.getElementById('gamesSection').style.display = 'none';
+      document.getElementById('appsSection').style.display = 'none';
+      document.getElementById('tabsSection').style.display = 'none';
+      document.getElementById('settingsSection').style.display = 'block';
+      document.getElementById('browserContainer').style.display = 'none';
+      loadSettings();
+    }
+
+    function renderTabs() {
+      const list = document.getElementById('tabsList');
+      if (tabs.length === 0) {
+        list.innerHTML = '<p style="color:#888;">No open tabs</p>';
+        return;
+      }
+      list.innerHTML = tabs.map((tab, i) => `
+        <div class="tab-item">
+          <div class="tab-info">
+            <span class="tab-type">${tab.type === 'search' ? '🔍' : tab.type === 'game' ? '🎮' : '📱'}</span>
+            <div>
+              <h3>${escapeHtml(tab.title)}</h3>
+              <p>${escapeHtml(tab.url)}</p>
+            </div>
+          </div>
+          <div class="tab-actions">
+            <button onclick="switchToTab(${i})">Open</button>
+            <button onclick="closeTabByIndex(${i})" class="delete-btn">Remove</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // Settings
+    function loadSettings() {
+      document.getElementById('bgImageUrl').value = settings.bgImage || '';
+      document.getElementById('cloakTitle').value = settings.cloakTitle || 'Google';
+      document.getElementById('cloakIcon').value = settings.cloakIcon || 'https://www.google.com/favicon.ico';
+    }
+
+    function setBackground() {
+      const url = document.getElementById('bgImageUrl').value.trim();
+      if (url) {
+        settings.bgImage = url;
+        localStorage.setItem('settings', JSON.stringify(settings));
+        document.body.style.backgroundImage = `url('${url}')`;
+        document.body.style.backgroundSize = 'cover';
+        document.body.style.backgroundPosition = 'center';
+        document.body.style.backgroundAttachment = 'fixed';
+        alert('Background applied!');
+      }
+    }
+
+    function clearBackground() {
+      settings.bgImage = '';
+      localStorage.setItem('settings', JSON.stringify(settings));
+      document.body.style.backgroundImage = 'none';
+      document.getElementById('bgImageUrl').value = '';
+      alert('Background cleared!');
+    }
+
+    function saveCloak() {
+      const title = document.getElementById('cloakTitle').value.trim();
+      const icon = document.getElementById('cloakIcon').value.trim();
+      
+      if (title && icon) {
+        settings.cloakTitle = title;
+        settings.cloakIcon = icon;
+        localStorage.setItem('settings', JSON.stringify(settings));
+        document.getElementById('pageTitle').textContent = title;
+        document.getElementById('favicon').href = icon;
+        alert('Cloak saved!');
+      }
+    }
+
+    function resetCloak() {
+      settings.cloakTitle = 'Google';
+      settings.cloakIcon = 'https://www.google.com/favicon.ico';
+      localStorage.setItem('settings', JSON.stringify(settings));
+      document.getElementById('pageTitle').textContent = 'Google';
+      document.getElementById('favicon').href = 'https://www.google.com/favicon.ico';
+      document.getElementById('cloakTitle').value = 'Google';
+      document.getElementById('cloakIcon').value = 'https://www.google.com/favicon.ico';
+      alert('Cloak reset!');
+    }
+
+    function clearAllData() {
+      if (confirm('Delete ALL data?')) {
+        localStorage.removeItem('games');
+        localStorage.removeItem('apps');
+        localStorage.removeItem('tabs');
+        games = [];
+        apps = [];
+        tabs = [];
+        renderGames();
+        renderApps();
+        renderTabs();
+        alert('All data cleared!');
+      }
+    }
+
+    // Browser functions - NO HTTPS NEEDED
+    function openInBrowser(url, title, type = 'search') {
+      const iframe = document.getElementById('contentFrame');
+      const urlBar = document.getElementById('urlBar');
+      
+      // Clean up URL - remove https:// prefix for display
+      let displayUrl = url.replace(/^https?:\/\//, '');
+      
+      // Use proxy
+      const proxiedUrl = `/proxy/${encodeURIComponent(url)}`;
+      
+      let existingIndex = tabs.findIndex(t => t.url === url);
+      
+      if (existingIndex === -1) {
+        tabs.push({ url, title, type, timestamp: Date.now() });
+        currentTabIndex = tabs.length - 1;
+      } else {
+        currentTabIndex = existingIndex;
+      }
+      
+      localStorage.setItem('tabs', JSON.stringify(tabs));
+      
+      document.getElementById('mainContent').style.display = 'none';
+      document.getElementById('gamesSection').style.display = 'none';
+      document.getElementById('appsSection').style.display = 'none';
+      document.getElementById('tabsSection').style.display = 'none';
+      document.getElementById('settingsSection').style.display = 'none';
+      document.getElementById('browserContainer').style.display = 'block';
+      
+      iframe.src = proxiedUrl;
+      urlBar.value = displayUrl;
+    }
+
+    function loadUrl() {
+      const searchBar = document.getElementById('searchBar');
+      let input = searchBar.value.trim();
+      if (!input) return;
+
+      let url, title;
+      
+      // Check if it looks like a URL (has a dot and no spaces)
+      if (input.includes('.') && !input.includes(' ')) {
+        // It's a URL - add https if not present
+        url = input.startsWith('http://') || input.startsWith('https://') ? input : 'https://' + input;
+        title = input;
+      } else {
+        // It's a search query - use Google
+        url = 'https://www.google.com/search?q=' + encodeURIComponent(input);
+        title = 'Search: ' + input;
+      }
+
+      openInBrowser(url, title, 'search');
+      searchBar.value = '';
+    }
+
+    function goToUrl() {
+      const urlBar = document.getElementById('urlBar');
+      let input = urlBar.value.trim();
+      if (!input) return;
+
+      let url;
+      
+      // Check if it looks like a URL
+      if (input.includes('.') && !input.includes(' ')) {
+        url = input.startsWith('http://') || input.startsWith('https://') ? input : 'https://' + input;
+      } else {
+        // It's a search query
+        url = 'https://www.google.com/search?q=' + encodeURIComponent(input);
+      }
+      
+      const proxiedUrl = `/proxy/${encodeURIComponent(url)}`;
+      document.getElementById('contentFrame').src = proxiedUrl;
+      
+      if (currentTabIndex >= 0) {
+        tabs[currentTabIndex].url = url;
+        tabs[currentTabIndex].title = input;
+        localStorage.setItem('tabs', JSON.stringify(tabs));
+      }
+    }
+
+    function switchToTab(index) {
+      currentTabIndex = index;
+      const tab = tabs[index];
+      openInBrowser(tab.url, tab.title, tab.type);
+    }
+
+    function closeTab() {
+      if (currentTabIndex >= 0) {
+        tabs.splice(currentTabIndex, 1);
+        localStorage.setItem('tabs', JSON.stringify(tabs));
+        currentTabIndex = -1;
+      }
+      showHome();
+    }
+
+    function closeTabByIndex(index) {
+      tabs.splice(index, 1);
+      localStorage.setItem('tabs', JSON.stringify(tabs));
+      renderTabs();
+    }
+
+    function goBack() {
+      try {
+        document.getElementById('contentFrame').contentWindow.history.back();
+      } catch(e) {
+        console.log('Cannot go back');
+      }
+    }
+
+    function goForward() {
+      try {
+        document.getElementById('contentFrame').contentWindow.history.forward();
+      } catch(e) {
+console.log('Cannot go forward');
+      }
+    }
+
+    function refreshPage() {
+      const iframe = document.getElementById('contentFrame');
+      iframe.src = iframe.src;
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Event listeners
+    document.getElementById('goBtn').addEventListener('click', loadUrl);
+    document.getElementById('searchBar').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') loadUrl();
+    });
+    document.getElementById('urlBar').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') goToUrl();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') showHome();
+    });
+
+    // Init
+    renderGames();
+    renderApps();
+  </script>
+</body>
+</html>
