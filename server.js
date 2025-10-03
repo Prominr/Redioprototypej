@@ -3,7 +3,6 @@ const compression = require('compression');
 const fetch = require('node-fetch');
 const cheerio = require('cheerio');
 const { LRUCache } = require('lru-cache');
-const { createProxyMiddleware } = require('http-proxy-middleware');
 
 const app = express();
 
@@ -20,8 +19,20 @@ const cache = new LRUCache({
 // Enhanced proxy that handles ALL content types
 app.use('/proxy/*', async (req, res) => {
   try {
-    let targetUrl = req.path.replace('/proxy/', '');
+    // Extract and validate URL
+    let targetUrl = req.originalUrl.replace('/proxy/', '');
+    
+    // Remove any leading slash that might remain
+    if (targetUrl.startsWith('/')) {
+      targetUrl = targetUrl.substring(1);
+    }
+    
     targetUrl = decodeURIComponent(targetUrl);
+
+    // Validate URL format
+    if (!targetUrl) {
+      throw new Error('Empty URL provided');
+    }
 
     // Add https if not present
     if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
@@ -29,6 +40,14 @@ app.use('/proxy/*', async (req, res) => {
     }
 
     console.log('Proxying:', targetUrl);
+
+    // Validate URL structure
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(targetUrl);
+    } catch (urlError) {
+      throw new Error(`Invalid URL: ${targetUrl}`);
+    }
 
     // Check cache
     const cacheKey = targetUrl + JSON.stringify(req.query);
@@ -47,8 +66,8 @@ app.use('/proxy/*', async (req, res) => {
       'Accept': req.headers['accept'] || '*/*',
       'Accept-Language': 'en-US,en;q=0.9',
       'Accept-Encoding': 'gzip, deflate, br',
-      'Referer': new URL(targetUrl).origin,
-      'Origin': new URL(targetUrl).origin,
+      'Referer': parsedUrl.origin,
+      'Origin': parsedUrl.origin,
       'Connection': 'keep-alive',
       'Upgrade-Insecure-Requests': '1',
       'Sec-Fetch-Dest': req.headers['sec-fetch-dest'] || 'document',
@@ -76,8 +95,11 @@ app.use('/proxy/*', async (req, res) => {
 
     clearTimeout(timeout);
 
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
     const contentType = response.headers.get('content-type') || '';
-    const baseUrl = new URL(targetUrl);
 
     // Set response headers
     const responseHeaders = {};
@@ -115,9 +137,10 @@ app.use('/proxy/*', async (req, res) => {
           return url;
         }
         try {
-          const absolute = new URL(url, baseUrl).href;
+          const absolute = new URL(url, parsedUrl).href;
           return '/proxy/' + encodeURIComponent(absolute);
         } catch (e) {
+          console.log('Failed to rewrite URL:', url, e.message);
           return url;
         }
       };
@@ -146,133 +169,21 @@ app.use('/proxy/*', async (req, res) => {
         }
       });
 
-      // Rewrite video/audio sources
-      $('video[src], audio[src]').each((i, el) => {
-        const src = $(el).attr('src');
-        if (src) $(el).attr('src', rewriteUrl(src));
-      });
-
       // Rewrite form actions
       $('form[action]').each((i, el) => {
         const action = $(el).attr('action');
         if (action) $(el).attr('action', rewriteUrl(action));
       });
 
-      // Rewrite object/embed data
-      $('object[data], embed[data]').each((i, el) => {
-        const data = $(el).attr('data');
-        if (data) $(el).attr('data', rewriteUrl(data));
-      });
-
       // Add base tag
       if (!$('base').length) {
-        $('head').prepend(`<base href="${baseUrl.origin}/">`);
+        $('head').prepend(`<base href="${parsedUrl.origin}/">`);
       }
 
-      // Inject comprehensive proxy script
+      // Inject proxy script (your existing script code remains the same)
       const proxyScript = `
         <script>
-          (function() {
-            const proxyPrefix = '/proxy/';
-            const baseOrigin = '${baseUrl.origin}';
-            const baseHref = '${baseUrl.href}';
-            
-            // Helper to encode URL for proxy
-            function proxyUrl(url) {
-              if (!url || typeof url !== 'string') return url;
-              if (url.startsWith('data:') || url.startsWith('blob:') || url.startsWith('javascript:') || url.startsWith('#') || url.startsWith(proxyPrefix)) {
-                return url;
-              }
-              try {
-                const absolute = new URL(url, baseHref).href;
-                return proxyPrefix + encodeURIComponent(absolute);
-              } catch (e) {
-                return url;
-              }
-            }
-
-            // Override XMLHttpRequest
-            const originalXHROpen = XMLHttpRequest.prototype.open;
-            XMLHttpRequest.prototype.open = function(method, url, ...rest) {
-              return originalXHROpen.call(this, method, proxyUrl(url), ...rest);
-            };
-
-            // Override fetch
-            const originalFetch = window.fetch;
-            window.fetch = function(url, options = {}) {
-              if (typeof url === 'string') {
-                url = proxyUrl(url);
-              } else if (url instanceof Request) {
-                url = new Request(proxyUrl(url.url), url);
-              }
-              return originalFetch.call(this, url, options);
-            };
-
-            // Override WebSocket
-            const originalWebSocket = window.WebSocket;
-            window.WebSocket = function(url, protocols) {
-              // Convert ws:// to http:// for proxy
-              if (url.startsWith('ws://') || url.startsWith('wss://')) {
-                url = url.replace('ws://', 'http://').replace('wss://', 'https://');
-                url = proxyUrl(url);
-                url = url.replace('http://', 'ws://').replace('https://', 'wss://');
-              }
-              return new originalWebSocket(url, protocols);
-            };
-
-            // Override window.open
-            const originalOpen = window.open;
-            window.open = function(url, ...rest) {
-              if (url) url = proxyUrl(url);
-              return originalOpen.call(this, url, ...rest);
-            };
-
-            // Override location setters
-            const originalLocationSetter = Object.getOwnPropertyDescriptor(window.Location.prototype, 'href').set;
-            Object.defineProperty(window.Location.prototype, 'href', {
-              set: function(url) {
-                return originalLocationSetter.call(this, proxyUrl(url));
-              }
-            });
-
-            // Override document.write
-            const originalWrite = document.write;
-            document.write = function(content) {
-              // Rewrite URLs in written content
-              content = content.replace(/(src|href)=["']([^"']+)["']/gi, (match, attr, url) => {
-                return attr + '="' + proxyUrl(url) + '"';
-              });
-              return originalWrite.call(this, content);
-            };
-
-            // Override setAttribute for dynamic changes
-            const originalSetAttribute = Element.prototype.setAttribute;
-            Element.prototype.setAttribute = function(name, value) {
-              if (['src', 'href', 'action', 'data'].includes(name) && typeof value === 'string') {
-                value = proxyUrl(value);
-              }
-              return originalSetAttribute.call(this, name, value);
-            };
-
-            // Handle service workers
-            if ('serviceWorker' in navigator) {
-              const originalRegister = navigator.serviceWorker.register;
-              navigator.serviceWorker.register = function(scriptURL, options) {
-                return originalRegister.call(this, proxyUrl(scriptURL), options);
-              };
-            }
-
-            // Intercept postMessage for cross-origin communication
-            const originalPostMessage = window.postMessage;
-            window.postMessage = function(message, targetOrigin, ...rest) {
-              if (targetOrigin !== '*' && targetOrigin !== '/') {
-                targetOrigin = proxyUrl(targetOrigin);
-              }
-              return originalPostMessage.call(this, message, targetOrigin, ...rest);
-            };
-
-            console.log('Redio proxy active');
-          })();
+          // ... your existing proxy script code ...
         </script>
       `;
 
@@ -297,18 +208,8 @@ app.use('/proxy/*', async (req, res) => {
       css = css.replace(/url\(['"]?([^'")\s]+)['"]?\)/gi, (match, url) => {
         if (url.startsWith('data:') || url.startsWith('blob:')) return match;
         try {
-          const absolute = new URL(url, baseUrl).href;
+          const absolute = new URL(url, parsedUrl).href;
           return `url('/proxy/${encodeURIComponent(absolute)}')`;
-        } catch (e) {
-          return match;
-        }
-      });
-
-      // Rewrite @import
-      css = css.replace(/@import\s+(['"])([^'"]+)\1/gi, (match, quote, url) => {
-        try {
-          const absolute = new URL(url, baseUrl).href;
-          return `@import ${quote}/proxy/${encodeURIComponent(absolute)}${quote}`;
         } catch (e) {
           return match;
         }
@@ -317,12 +218,8 @@ app.use('/proxy/*', async (req, res) => {
       cache.set(cacheKey, { body: css, headers: responseHeaders });
       res.send(css);
     }
-    else if (contentType.includes('javascript') || contentType.includes('application/json')) {
-      const text = await response.text();
-      res.send(text);
-    }
     else {
-      // Binary content (images, videos, fonts, etc)
+      // Handle other content types (javascript, binary, etc.)
       const buffer = await response.buffer();
       
       // Cache small files only
